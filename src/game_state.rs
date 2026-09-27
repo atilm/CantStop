@@ -23,8 +23,8 @@ pub struct GameState {
 }
 
 pub enum AfterMove {
-    GO_ON,
-    SET_CAMPS,
+    GoOn,
+    SetCamps,
 }
 
 impl GameState {
@@ -65,6 +65,11 @@ impl GameState {
         self.players.len()
     }
 
+    // The pairs specify the indices of the dice to combine.
+    // Pairs for forbidden moves are ignored.
+    // If you are inserting a third climber, but both moves are allowed,
+    // the first pair well be preferred and the second ignored.
+    // after_move determines, if you want to go on or set camps.
     pub fn move_climbers(
         &mut self,
         first_pair: [usize; 2],
@@ -73,33 +78,8 @@ impl GameState {
     ) -> Result<(), GameError> {
         GameState::check_die_indices(first_pair, second_pair)?;
 
-        // First occurence of duplicate section
-        let first_pair = first_pair.iter().map(|i| self.dice_values[*i]);
-        let track: u32 = first_pair.sum();
-
-        let mut existing_climber = self.players[0]
-            .climbers
-            .iter_mut()
-            .find(|c| c.is_on_track(track));
-
-        match existing_climber {
-            Some(ref mut climber) => climber.step += 1,
-            None => self.players[0].climbers.push(TrackPosition::new(track, 1)),
-        }
-
-        // duplicate section
-        let second_pair = second_pair.iter().map(|i| self.dice_values[*i]);
-        let track: u32 = second_pair.sum();
-
-        let mut existing_climber = self.players[0]
-            .climbers
-            .iter_mut()
-            .find(|c| c.is_on_track(track));
-
-        match existing_climber {
-            Some(ref mut climber) => climber.step += 1,
-            None => self.players[0].climbers.push(TrackPosition::new(track, 1)),
-        }
+        self.move_for_pair(first_pair)?;
+        self.move_for_pair(second_pair)?;
 
         Ok(())
     }
@@ -113,16 +93,45 @@ impl GameState {
             _ => Err(InvalidDiePairs),
         }
     }
+
+    fn move_for_pair(&mut self, dice_index_pair: [usize; 2]) -> Result<(), GameError> {
+        let dice_value_pair = dice_index_pair.iter().map(|i| self.dice_values[*i]);
+        let track: u32 = dice_value_pair.sum();
+
+        let mut existing_climber = self.players[0]
+            .climbers
+            .iter_mut()
+            .find(|c| c.is_on_track(track));
+
+        match existing_climber {
+            Some(ref mut climber) => climber.step += 1,
+            None => self.maybe_add_climber(track),
+        }
+
+        Ok(())
+    }
+
+    fn maybe_add_climber(&mut self, track: u32) {
+        if self.players[0].climbers.len() >= 3 {
+            return;
+        }
+
+        self.players[0].climbers.push(TrackPosition::new(track, 1))
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::game_state::{
-        AfterMove::GO_ON,
+        AfterMove::GoOn,
         GameError::{InavlidNumberOfPlayers, InvalidDieNumber, InvalidDiePairs},
     };
 
     use super::*;
+
+    fn has_climber(player: &Player, climber: TrackPosition) -> bool {
+        player.climbers.iter().any(|c| *c == climber)
+    }
 
     #[test]
     fn game_state_returns_player_count() {
@@ -171,12 +180,12 @@ mod tests {
 
         // Out of range index 4
         assert_eq!(
-            game.move_climbers([0, 4], [2, 3], GO_ON).unwrap_err(),
+            game.move_climbers([0, 4], [2, 3], GoOn).unwrap_err(),
             InvalidDiePairs
         );
         // Double index 1
         assert_eq!(
-            game.move_climbers([0, 1], [1, 3], GO_ON).unwrap_err(),
+            game.move_climbers([0, 1], [1, 3], GoOn).unwrap_err(),
             InvalidDiePairs
         );
     }
@@ -185,7 +194,7 @@ mod tests {
     fn first_player_can_insert_two_climbers() {
         let mut game = GameState::new(2).unwrap();
         game.roll_dice([3, 4, 1, 1]).unwrap();
-        game.move_climbers([0, 1], [2, 3], GO_ON).unwrap();
+        game.move_climbers([0, 1], [2, 3], GoOn).unwrap();
 
         let active_player = &game.players[0];
 
@@ -209,7 +218,7 @@ mod tests {
     fn first_player_can_insert_one_player_at_step_two() {
         let mut game = GameState::new(2).unwrap();
         game.roll_dice([3, 3, 4, 4]).unwrap();
-        game.move_climbers([0, 2], [1, 3], GO_ON).unwrap();
+        game.move_climbers([0, 2], [1, 3], GoOn).unwrap();
 
         let active_player = &game.players[0];
 
@@ -220,5 +229,61 @@ mod tests {
                 .iter()
                 .any(|c| *c == TrackPosition::new(7, 2)),
         );
+    }
+
+    #[test]
+    fn first_player_can_insert_the_third_climber() {
+        let mut game = GameState::new(2).unwrap();
+
+        game.roll_dice([3, 3, 4, 4]).unwrap();
+        game.move_climbers([0, 1], [2, 3], GoOn).unwrap();
+
+        {
+            let active_player = &game.players[0];
+            assert_eq!(active_player.climbers.len(), 2);
+
+            assert!(has_climber(active_player, TrackPosition::new(6, 1)));
+            assert!(has_climber(active_player, TrackPosition::new(8, 1)));
+        }
+
+        game.roll_dice([5, 1, 5, 2]).unwrap();
+        game.move_climbers([0, 1], [2, 3], GoOn).unwrap();
+
+        {
+            let active_player = &game.players[0];
+            assert_eq!(active_player.climbers.len(), 3);
+
+            assert!(has_climber(active_player, TrackPosition::new(6, 2)));
+            assert!(has_climber(active_player, TrackPosition::new(7, 1)));
+            assert!(has_climber(active_player, TrackPosition::new(8, 1)));
+        }
+    }
+
+    #[test]
+    fn no_fourth_climber_is_added() {
+        let mut game = GameState::new(2).unwrap();
+
+        game.roll_dice([3, 3, 4, 4]).unwrap();
+        game.move_climbers([0, 1], [2, 3], GoOn).unwrap();
+
+        {
+            let active_player = &game.players[0];
+            assert_eq!(active_player.climbers.len(), 2);
+
+            assert!(has_climber(active_player, TrackPosition::new(6, 1)));
+            assert!(has_climber(active_player, TrackPosition::new(8, 1)));
+        }
+
+        game.roll_dice([1, 1, 5, 2]).unwrap();
+        game.move_climbers([2, 3], [0, 1], GoOn).unwrap();
+
+        {
+            let active_player = &game.players[0];
+            assert_eq!(active_player.climbers.len(), 3);
+
+            assert!(has_climber(active_player, TrackPosition::new(6, 1)));
+            assert!(has_climber(active_player, TrackPosition::new(7, 1)));
+            assert!(has_climber(active_player, TrackPosition::new(8, 1)));
+        }
     }
 }
