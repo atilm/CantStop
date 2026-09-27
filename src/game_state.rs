@@ -73,15 +73,34 @@ impl GameState {
     ) -> Result<(), GameError> {
         GameState::check_die_indices(first_pair, second_pair)?;
 
+        // First occurence of duplicate section
         let first_pair = first_pair.iter().map(|i| self.dice_values[*i]);
-        let second_pair = second_pair.iter().map(|i| self.dice_values[*i]);
+        let track: u32 = first_pair.sum();
 
-        self.players[0]
+        let mut existing_climber = self.players[0]
             .climbers
-            .push(TrackPosition::new(first_pair.sum(), 1));
-        self.players[0]
+            .iter_mut()
+            .find(|c| c.is_on_track(track));
+
+        match existing_climber {
+            Some(ref mut climber) => climber.step += 1,
+            None => self.players[0].climbers.push(TrackPosition::new(track, 1)),
+        }
+
+        // duplicate section
+        let second_pair = second_pair.iter().map(|i| self.dice_values[*i]);
+        let track: u32 = second_pair.sum();
+
+        let mut existing_climber = self.players[0]
             .climbers
-            .push(TrackPosition::new(second_pair.sum(), 1));
+            .iter_mut()
+            .find(|c| c.is_on_track(track));
+
+        match existing_climber {
+            Some(ref mut climber) => climber.step += 1,
+            None => self.players[0].climbers.push(TrackPosition::new(track, 1)),
+        }
+
         Ok(())
     }
 
@@ -146,6 +165,23 @@ mod tests {
     }
 
     #[test]
+    fn game_move_rejects_invalid_die_indices() {
+        let mut game = GameState::new(2).unwrap();
+        game.roll_dice([3, 4, 1, 1]).unwrap();
+
+        // Out of range index 4
+        assert_eq!(
+            game.move_climbers([0, 4], [2, 3], GO_ON).unwrap_err(),
+            InvalidDiePairs
+        );
+        // Double index 1
+        assert_eq!(
+            game.move_climbers([0, 1], [1, 3], GO_ON).unwrap_err(),
+            InvalidDiePairs
+        );
+    }
+
+    #[test]
     fn first_player_can_insert_two_climbers() {
         let mut game = GameState::new(2).unwrap();
         game.roll_dice([3, 4, 1, 1]).unwrap();
@@ -170,19 +206,19 @@ mod tests {
     }
 
     #[test]
-    fn game_move_rejects_invalid_die_indices() {
+    fn first_player_can_insert_one_player_at_step_two() {
         let mut game = GameState::new(2).unwrap();
-        game.roll_dice([3, 4, 1, 1]).unwrap();
+        game.roll_dice([3, 3, 4, 4]).unwrap();
+        game.move_climbers([0, 2], [1, 3], GO_ON).unwrap();
 
-        // Out of range index 4
-        assert_eq!(
-            game.move_climbers([0, 4], [2, 3], GO_ON).unwrap_err(),
-            InvalidDiePairs
-        );
-        // Double index 1
-        assert_eq!(
-            game.move_climbers([0, 1], [1, 3], GO_ON).unwrap_err(),
-            InvalidDiePairs
+        let active_player = &game.players[0];
+
+        assert_eq!(active_player.climbers.len(), 1);
+        assert!(
+            active_player
+                .climbers
+                .iter()
+                .any(|c| *c == TrackPosition::new(7, 2)),
         );
     }
 }

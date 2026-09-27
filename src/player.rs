@@ -7,13 +7,17 @@ const NONE_POS: Option<TrackPosition> = None;
 
 #[derive(Debug, PartialEq)]
 pub struct TrackPosition {
-    track: u32,
-    step: u32,
+    pub track: u32,
+    pub step: u32,
 }
 
 impl TrackPosition {
     pub fn new(track: u32, step: u32) -> TrackPosition {
         TrackPosition { track, step }
+    }
+
+    pub fn is_on_track(&self, track: u32) -> bool {
+        self.track == track
     }
 }
 
