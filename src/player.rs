@@ -1,54 +1,33 @@
 use crate::game_rules;
 use thiserror::Error;
 
-#[derive(Debug)]
+const BASE_CAMPS_PER_PLAYER: usize = 10;
+const CLIMBERS_PER_PLAYER: usize = 3;
+const NONE_POS: Option<TrackPosition> = None;
+
+#[derive(Debug, PartialEq)]
 pub struct TrackPosition {
-    track: u32,
-    step: u32
+    pub track: u32,
+    pub step: u32,
 }
 
-#[derive(Error, Debug)]
-pub enum PlayerError {
-
+impl TrackPosition {
+    pub fn new(track: u32, step: u32) -> TrackPosition {
+        TrackPosition { track, step }
+    }
 }
 
 #[derive(Debug)]
 pub struct Player {
-    pub base_camps: [Option<u32>; 11],
-    pub climbers: [Option<TrackPosition>; 3]
+    pub base_camps: [Option<TrackPosition>; BASE_CAMPS_PER_PLAYER],
+    pub climbers: [Option<TrackPosition>; CLIMBERS_PER_PLAYER],
 }
 
 impl Player {
     pub fn new() -> Self {
-        const NONE_INDEX: Option<u32> = None;
-        const NONE_POS: Option<TrackPosition> = None;
-        Player { 
-            base_camps: [NONE_INDEX; 11],
-            climbers: [NONE_POS; 3]
-         }
-    }
-
-    pub fn advance_climber(&mut self, track_index: usize) -> Result<(), PlayerError> {
-        
-        Ok(())
-    }
-
-    pub fn set_base_camps(&mut self) -> () {
-        
-    }
-
-    // pub fn has_won(&self) -> bool {
-    //     false
-    // }
-}
-
-
-#[cfg(test)]
-mod tests {
-    use crate::player::Player;
-
-    #[test]
-    fn player_with_three_base_camps_at_end_has_won() {
-        let mut player = Player::new();
+        Player {
+            base_camps: [NONE_POS; BASE_CAMPS_PER_PLAYER],
+            climbers: [NONE_POS; CLIMBERS_PER_PLAYER],
+        }
     }
 }
