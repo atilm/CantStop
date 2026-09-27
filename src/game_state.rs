@@ -1,5 +1,5 @@
 use crate::{
-    game_state::GameError::{InavlidNumberOfPlayers, InvalidDiceNumber},
+    game_state::GameError::{InavlidNumberOfPlayers, InvalidDieNumber, InvalidDiePairs},
     player::{Player, TrackPosition},
 };
 use thiserror::Error;
@@ -10,8 +10,10 @@ const NUMBER_OF_DICE: usize = 4;
 pub enum GameError {
     #[error("Invalid number of players {0}")]
     InavlidNumberOfPlayers(usize),
-    #[error("Invalid dice number: {0}")]
-    InvalidDiceNumber(u32),
+    #[error("Invalid die number: {0}")]
+    InvalidDieNumber(u32),
+    #[error("Invalid die pairs")]
+    InvalidDiePairs,
 }
 
 #[derive(Debug)]
@@ -47,7 +49,7 @@ impl GameState {
     pub fn roll_dice(&mut self, values: [u32; NUMBER_OF_DICE]) -> Result<(), GameError> {
         for v in values {
             if v < 1 || v > 6 {
-                return Err(InvalidDiceNumber(v));
+                return Err(InvalidDieNumber(v));
             }
         }
 
@@ -65,13 +67,32 @@ impl GameState {
 
     pub fn move_climbers(
         &mut self,
-        first_pair: [u32; 2],
-        second_pair: [u32; 2],
+        first_pair: [usize; 2],
+        second_pair: [usize; 2],
         after_move: AfterMove,
     ) -> Result<(), GameError> {
-        self.players[0].climbers[0] = Some(TrackPosition { track: 7, step: 1 });
-        self.players[0].climbers[1] = Some(TrackPosition { track: 2, step: 1 });
+        GameState::check_die_indices(first_pair, second_pair)?;
+
+        let first_pair = first_pair.iter().map(|i| self.dice_values[*i]);
+        let second_pair = second_pair.iter().map(|i| self.dice_values[*i]);
+
+        self.players[0]
+            .climbers
+            .push(TrackPosition::new(first_pair.sum(), 1));
+        self.players[0]
+            .climbers
+            .push(TrackPosition::new(second_pair.sum(), 1));
         Ok(())
+    }
+
+    fn check_die_indices(first_pair: [usize; 2], second_pair: [usize; 2]) -> Result<(), GameError> {
+        let mut all_indices: Vec<usize> = [&first_pair[..], &second_pair[..]].concat();
+        all_indices.sort();
+
+        match all_indices.as_slice() {
+            [0, 1, 2, 3] => Ok(()),
+            _ => Err(InvalidDiePairs),
+        }
     }
 }
 
@@ -79,7 +100,7 @@ impl GameState {
 mod tests {
     use crate::game_state::{
         AfterMove::GO_ON,
-        GameError::{InavlidNumberOfPlayers, InvalidDiceNumber},
+        GameError::{InavlidNumberOfPlayers, InvalidDieNumber, InvalidDiePairs},
     };
 
     use super::*;
@@ -114,8 +135,8 @@ mod tests {
         let result_0 = game.roll_dice([0, 2, 3, 4]).unwrap_err();
         let result_7 = game.roll_dice([1, 2, 3, 7]).unwrap_err();
 
-        assert_eq!(result_0, InvalidDiceNumber(0));
-        assert_eq!(result_7, InvalidDiceNumber(7));
+        assert_eq!(result_0, InvalidDieNumber(0));
+        assert_eq!(result_7, InvalidDieNumber(7));
     }
 
     #[test]
@@ -130,20 +151,38 @@ mod tests {
         game.roll_dice([3, 4, 1, 1]).unwrap();
         game.move_climbers([0, 1], [2, 3], GO_ON).unwrap();
 
+        let active_player = &game.players[0];
+
+        assert_eq!(active_player.climbers.len(), 2);
         assert!(
-            game.players[0]
+            active_player
                 .climbers
                 .iter()
-                .flatten()
                 .any(|c| *c == TrackPosition::new(7, 1)),
         );
 
         assert!(
-            game.players[0]
+            active_player
                 .climbers
                 .iter()
-                .flatten()
                 .any(|c| *c == TrackPosition::new(2, 1)),
+        );
+    }
+
+    #[test]
+    fn game_move_rejects_invalid_die_indices() {
+        let mut game = GameState::new(2).unwrap();
+        game.roll_dice([3, 4, 1, 1]).unwrap();
+
+        // Out of range index 4
+        assert_eq!(
+            game.move_climbers([0, 4], [2, 3], GO_ON).unwrap_err(),
+            InvalidDiePairs
+        );
+        // Double index 1
+        assert_eq!(
+            game.move_climbers([0, 1], [1, 3], GO_ON).unwrap_err(),
+            InvalidDiePairs
         );
     }
 }

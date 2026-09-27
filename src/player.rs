@@ -7,8 +7,8 @@ const NONE_POS: Option<TrackPosition> = None;
 
 #[derive(Debug, PartialEq)]
 pub struct TrackPosition {
-    pub track: u32,
-    pub step: u32,
+    track: u32,
+    step: u32,
 }
 
 impl TrackPosition {
@@ -19,15 +19,15 @@ impl TrackPosition {
 
 #[derive(Debug)]
 pub struct Player {
-    pub base_camps: [Option<TrackPosition>; BASE_CAMPS_PER_PLAYER],
-    pub climbers: [Option<TrackPosition>; CLIMBERS_PER_PLAYER],
+    pub base_camps: Vec<TrackPosition>,
+    pub climbers: Vec<TrackPosition>,
 }
 
 impl Player {
     pub fn new() -> Self {
         Player {
-            base_camps: [NONE_POS; BASE_CAMPS_PER_PLAYER],
-            climbers: [NONE_POS; CLIMBERS_PER_PLAYER],
+            base_camps: Vec::with_capacity(BASE_CAMPS_PER_PLAYER),
+            climbers: Vec::with_capacity(CLIMBERS_PER_PLAYER),
         }
     }
 }
