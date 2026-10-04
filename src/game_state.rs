@@ -1,5 +1,9 @@
 use crate::{
-    game_state::GameError::{InavlidNumberOfPlayers, InvalidDieNumber, InvalidDiePairs},
+    game_state::{
+        GameError::{InavlidNumberOfPlayers, InvalidDieNumber, InvalidDiePairs},
+        MoveResult::{GoAgain, NextPlayer},
+        SingleMoveResult::{Moved, Passed},
+    },
     player::{Player, TrackPosition},
 };
 use thiserror::Error;
@@ -19,7 +23,20 @@ pub enum GameError {
 #[derive(Debug)]
 pub struct GameState {
     players: Vec<Player>,
+    active_player: usize,
     dice_values: [u32; 4],
+}
+
+#[derive(Debug, PartialEq)]
+pub enum MoveResult {
+    GoAgain,
+    NextPlayer,
+}
+
+#[derive(PartialEq)]
+pub enum SingleMoveResult {
+    Moved,
+    Passed,
 }
 
 pub enum AfterMove {
@@ -32,9 +49,11 @@ impl GameState {
         match players {
             1..5 => {
                 let players = (0..players).map(|_| Player::new()).collect();
+                let active_player = 0;
                 let dice_values = [0; 4];
                 Ok(GameState {
                     players,
+                    active_player,
                     dice_values,
                 })
             }
@@ -43,7 +62,7 @@ impl GameState {
     }
 
     pub fn get_active_player(&self) -> usize {
-        0
+        self.active_player
     }
 
     pub fn roll_dice(&mut self, values: [u32; NUMBER_OF_DICE]) -> Result<(), GameError> {
@@ -75,13 +94,18 @@ impl GameState {
         first_pair: [usize; 2],
         second_pair: [usize; 2],
         after_move: AfterMove,
-    ) -> Result<(), GameError> {
+    ) -> Result<MoveResult, GameError> {
         GameState::check_die_indices(first_pair, second_pair)?;
 
-        self.move_for_pair(first_pair)?;
-        self.move_for_pair(second_pair)?;
+        let first_move = self.move_for_pair(first_pair)?;
+        let second_move = self.move_for_pair(second_pair)?;
 
-        Ok(())
+        if first_move == Passed && second_move == Passed {
+            self.active_player += 1;
+            Ok(NextPlayer)
+        } else {
+            Ok(GoAgain)
+        }
     }
 
     fn check_die_indices(first_pair: [usize; 2], second_pair: [usize; 2]) -> Result<(), GameError> {
@@ -94,7 +118,10 @@ impl GameState {
         }
     }
 
-    fn move_for_pair(&mut self, dice_index_pair: [usize; 2]) -> Result<(), GameError> {
+    fn move_for_pair(
+        &mut self,
+        dice_index_pair: [usize; 2],
+    ) -> Result<SingleMoveResult, GameError> {
         let dice_value_pair = dice_index_pair.iter().map(|i| self.dice_values[*i]);
         let track: u32 = dice_value_pair.sum();
 
@@ -104,19 +131,21 @@ impl GameState {
             .find(|c| c.is_on_track(track));
 
         match existing_climber {
-            Some(ref mut climber) => climber.step += 1,
-            None => self.maybe_add_climber(track),
+            Some(ref mut climber) => {
+                climber.step += 1;
+                Ok(Moved)
+            }
+            None => Ok(self.maybe_add_climber(track)),
         }
-
-        Ok(())
     }
 
-    fn maybe_add_climber(&mut self, track: u32) {
+    fn maybe_add_climber(&mut self, track: u32) -> SingleMoveResult {
         if self.players[0].climbers.len() >= 3 {
-            return;
+            return Passed;
         }
 
-        self.players[0].climbers.push(TrackPosition::new(track, 1))
+        self.players[0].climbers.push(TrackPosition::new(track, 1));
+        Moved
     }
 }
 
@@ -125,6 +154,7 @@ mod tests {
     use crate::game_state::{
         AfterMove::GoOn,
         GameError::{InavlidNumberOfPlayers, InvalidDieNumber, InvalidDiePairs},
+        MoveResult::NextPlayer,
     };
 
     use super::*;
@@ -285,5 +315,31 @@ mod tests {
             assert!(has_climber(active_player, TrackPosition::new(7, 1)));
             assert!(has_climber(active_player, TrackPosition::new(8, 1)));
         }
+    }
+
+    #[test]
+    fn when_the_no_move_is_possible_its_the_next_players_turn() {
+        let mut game = GameState::new(2).unwrap();
+
+        game.roll_dice([1, 1, 6, 6]).unwrap();
+        game.move_climbers([0, 1], [2, 3], GoOn).unwrap();
+        game.roll_dice([1, 1, 3, 4]).unwrap();
+        let move_result = game.move_climbers([0, 1], [2, 3], GoOn).unwrap();
+        assert_eq!(move_result, GoAgain);
+
+        {
+            let active_player = &game.players[0];
+
+            assert!(has_climber(active_player, TrackPosition::new(2, 2)));
+            assert!(has_climber(active_player, TrackPosition::new(12, 1)));
+            assert!(has_climber(active_player, TrackPosition::new(7, 1)));
+        }
+
+        game.roll_dice([1, 2, 4, 4]).unwrap();
+        let move_result = game.move_climbers([0, 1], [2, 3], GoOn).unwrap();
+
+        assert_eq!(move_result, NextPlayer);
+
+        assert_eq!(game.get_active_player(), 1);
     }
 }
