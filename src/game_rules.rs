@@ -1,14 +1,7 @@
-use thiserror::Error;
+use crate::game_state::GameError;
+use crate::game_state::GameError::InvalidTrackIndex;
 
-use crate::game_rules::GameRulesError::InvalidTrackIndex;
-
-#[derive(Error, Debug)]
-pub enum GameRulesError {
-    #[error("Invalid track index")]
-    InvalidTrackIndex,
-}
-
-pub fn get_max_number_of_steps(track_index: usize) -> Result<usize, GameRulesError> {
+pub fn get_max_number_of_steps(track_index: usize) -> Result<usize, GameError> {
     match track_index {
         2 => Ok(3),
         3 => Ok(5),
@@ -21,6 +14,12 @@ pub fn get_max_number_of_steps(track_index: usize) -> Result<usize, GameRulesErr
         10 => Ok(7),
         11 => Ok(5),
         12 => Ok(3),
-        _ => Err(InvalidTrackIndex),
+        _ => Err(InvalidTrackIndex(track_index)),
     }
 }
+
+// pub fn is_at_top(pos: &TrackPosition) -> Result<bool, GameError> {
+//     let track_index = pos.track as usize;
+//     let step = pos.step as usize;
+//     Ok(step >= get_max_number_of_steps(track_index)?)
+// }

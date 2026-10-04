@@ -34,7 +34,7 @@ mod tests {
     fn fair_dice_roller_returns_expected_values() {
         let mut dice_roller = FairDiceRoller::new();
 
-        for i in 0..10000 {
+        for _i in 0..10000 {
             let value = dice_roller.roll_dice();
             for v in value.iter() {
                 assert!(*v >= 1);

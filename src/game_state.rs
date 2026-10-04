@@ -1,5 +1,6 @@
 use crate::{
     game_state::{
+        AfterMove::{GoOn, SetCamps},
         GameError::{InavlidNumberOfPlayers, InvalidDieNumber, InvalidDiePairs},
         MoveResult::{GoAgain, NextPlayer},
         SingleMoveResult::{Moved, Passed},
@@ -18,6 +19,10 @@ pub enum GameError {
     InvalidDieNumber(u32),
     #[error("Invalid die pairs")]
     InvalidDiePairs,
+    #[error("Invalid track index: {0}")]
+    InvalidTrackIndex(usize),
+    #[error("Cannot set camps with less than 3 climbers")]
+    CannotSetCamp,
 }
 
 #[derive(Debug)]
@@ -101,11 +106,35 @@ impl GameState {
         let second_move = self.move_for_pair(second_pair)?;
 
         if first_move == Passed && second_move == Passed {
-            self.active_player += 1;
-            Ok(NextPlayer)
+            self.next_player()
         } else {
-            Ok(GoAgain)
+            match after_move {
+                GoOn => Ok(GoAgain),
+                SetCamps => self.set_camps(),
+            }
         }
+    }
+
+    fn set_camps(&mut self) -> Result<MoveResult, GameError> {
+        let player = self.get_player_mut();
+        player.base_camps.extend_from_slice(&player.climbers);
+
+        self.next_player()
+    }
+
+    fn get_player_mut(&mut self) -> &mut Player {
+        &mut self.players[self.active_player]
+    }
+
+    fn get_player(&self) -> &Player {
+        &self.players[self.active_player]
+    }
+
+    fn next_player(&mut self) -> Result<MoveResult, GameError> {
+        let player = self.get_player_mut();
+        player.climbers.clear();
+        self.active_player += 1;
+        Ok(NextPlayer)
     }
 
     fn check_die_indices(first_pair: [usize; 2], second_pair: [usize; 2]) -> Result<(), GameError> {
@@ -125,26 +154,35 @@ impl GameState {
         let dice_value_pair = dice_index_pair.iter().map(|i| self.dice_values[*i]);
         let track: u32 = dice_value_pair.sum();
 
-        let mut existing_climber = self.players[0]
+        let mut existing_climber = self
+            .get_player_mut()
             .climbers
             .iter_mut()
             .find(|c| c.is_on_track(track));
 
         match existing_climber {
-            Some(ref mut climber) => {
-                climber.step += 1;
-                Ok(Moved)
-            }
+            Some(ref mut climber) => GameState::maybe_climb(climber),
             None => Ok(self.maybe_add_climber(track)),
         }
     }
 
+    fn maybe_climb(climber: &mut TrackPosition) -> Result<SingleMoveResult, GameError> {
+        if climber.is_at_top()? {
+            return Ok(Passed);
+        }
+
+        climber.step += 1;
+        Ok(Moved)
+    }
+
     fn maybe_add_climber(&mut self, track: u32) -> SingleMoveResult {
-        if self.players[0].climbers.len() >= 3 {
+        if self.get_player().climbers.len() >= 3 {
             return Passed;
         }
 
-        self.players[0].climbers.push(TrackPosition::new(track, 1));
+        self.get_player_mut()
+            .climbers
+            .push(TrackPosition::new(track, 1));
         Moved
     }
 }
@@ -152,7 +190,7 @@ impl GameState {
 #[cfg(test)]
 mod tests {
     use crate::game_state::{
-        AfterMove::GoOn,
+        AfterMove::{GoOn, SetCamps},
         GameError::{InavlidNumberOfPlayers, InvalidDieNumber, InvalidDiePairs},
         MoveResult::NextPlayer,
     };
@@ -161,6 +199,10 @@ mod tests {
 
     fn has_climber(player: &Player, climber: TrackPosition) -> bool {
         player.climbers.iter().any(|c| *c == climber)
+    }
+
+    fn has_camp(player: &Player, camp: TrackPosition) -> bool {
+        player.base_camps.iter().any(|c| *c == camp)
     }
 
     #[test]
@@ -226,7 +268,7 @@ mod tests {
         game.roll_dice([3, 4, 1, 1]).unwrap();
         game.move_climbers([0, 1], [2, 3], GoOn).unwrap();
 
-        let active_player = &game.players[0];
+        let active_player = &game.get_player();
 
         assert_eq!(active_player.climbers.len(), 2);
         assert!(
@@ -250,7 +292,7 @@ mod tests {
         game.roll_dice([3, 3, 4, 4]).unwrap();
         game.move_climbers([0, 2], [1, 3], GoOn).unwrap();
 
-        let active_player = &game.players[0];
+        let active_player = &game.get_player();
 
         assert_eq!(active_player.climbers.len(), 1);
         assert!(
@@ -269,7 +311,7 @@ mod tests {
         game.move_climbers([0, 1], [2, 3], GoOn).unwrap();
 
         {
-            let active_player = &game.players[0];
+            let active_player = game.get_player();
             assert_eq!(active_player.climbers.len(), 2);
 
             assert!(has_climber(active_player, TrackPosition::new(6, 1)));
@@ -280,7 +322,7 @@ mod tests {
         game.move_climbers([0, 1], [2, 3], GoOn).unwrap();
 
         {
-            let active_player = &game.players[0];
+            let active_player = game.get_player();
             assert_eq!(active_player.climbers.len(), 3);
 
             assert!(has_climber(active_player, TrackPosition::new(6, 2)));
@@ -297,7 +339,7 @@ mod tests {
         game.move_climbers([0, 1], [2, 3], GoOn).unwrap();
 
         {
-            let active_player = &game.players[0];
+            let active_player = game.get_player();
             assert_eq!(active_player.climbers.len(), 2);
 
             assert!(has_climber(active_player, TrackPosition::new(6, 1)));
@@ -308,7 +350,7 @@ mod tests {
         game.move_climbers([2, 3], [0, 1], GoOn).unwrap();
 
         {
-            let active_player = &game.players[0];
+            let active_player = game.get_player();
             assert_eq!(active_player.climbers.len(), 3);
 
             assert!(has_climber(active_player, TrackPosition::new(6, 1)));
@@ -317,29 +359,79 @@ mod tests {
         }
     }
 
+    fn move_continue(game: &mut GameState, pairs: [u32; 4]) -> MoveResult {
+        game.roll_dice(pairs).unwrap();
+        game.move_climbers([0, 1], [2, 3], GoOn).unwrap()
+    }
+
+    fn move_set_camps(game: &mut GameState, pairs: [u32; 4]) -> MoveResult {
+        game.roll_dice(pairs).unwrap();
+        game.move_climbers([0, 1], [2, 3], SetCamps).unwrap()
+    }
+
     #[test]
-    fn when_the_no_move_is_possible_its_the_next_players_turn() {
+    fn when_a_climber_has_reached_the_top_further_moves_are_ignored() {
         let mut game = GameState::new(2).unwrap();
 
-        game.roll_dice([1, 1, 6, 6]).unwrap();
-        game.move_climbers([0, 1], [2, 3], GoOn).unwrap();
-        game.roll_dice([1, 1, 3, 4]).unwrap();
-        let move_result = game.move_climbers([0, 1], [2, 3], GoOn).unwrap();
-        assert_eq!(move_result, GoAgain);
+        assert_eq!(move_continue(&mut game, [1, 1, 6, 6]), GoAgain);
+        assert_eq!(move_continue(&mut game, [1, 1, 6, 6]), GoAgain);
+        assert_eq!(move_continue(&mut game, [1, 1, 6, 6]), GoAgain);
+        assert_eq!(move_continue(&mut game, [1, 1, 2, 6]), GoAgain);
+        assert_eq!(move_continue(&mut game, [5, 3, 6, 6]), GoAgain);
+
+        let active_player = game.get_player();
+
+        assert!(has_climber(active_player, TrackPosition::new(2, 3)));
+        assert!(has_climber(active_player, TrackPosition::new(12, 3)));
+        assert!(has_climber(active_player, TrackPosition::new(8, 2)));
+    }
+
+    #[test]
+    fn when_no_move_is_possible_its_the_next_players_turn() {
+        let mut game = GameState::new(2).unwrap();
+
+        assert_eq!(move_continue(&mut game, [1, 1, 6, 6]), GoAgain);
+        assert_eq!(move_continue(&mut game, [1, 1, 3, 4]), GoAgain);
 
         {
-            let active_player = &game.players[0];
+            let active_player = game.get_player();
 
             assert!(has_climber(active_player, TrackPosition::new(2, 2)));
             assert!(has_climber(active_player, TrackPosition::new(12, 1)));
             assert!(has_climber(active_player, TrackPosition::new(7, 1)));
         }
 
-        game.roll_dice([1, 2, 4, 4]).unwrap();
-        let move_result = game.move_climbers([0, 1], [2, 3], GoOn).unwrap();
-
-        assert_eq!(move_result, NextPlayer);
+        assert_eq!(move_continue(&mut game, [1, 2, 4, 4]), NextPlayer);
 
         assert_eq!(game.get_active_player(), 1);
+    }
+
+    #[test]
+    fn a_player_can_set_camps_when_three_climbers_have_been_placed() {
+        let mut game = GameState::new(2).unwrap();
+
+        assert_eq!(move_continue(&mut game, [1, 1, 1, 2]), GoAgain);
+        assert_eq!(move_set_camps(&mut game, [1, 2, 2, 2]), NextPlayer);
+
+        assert_eq!(game.get_active_player(), 1);
+
+        let previous_player = &game.players[0];
+        assert!(has_camp(previous_player, TrackPosition::new(2, 1)));
+        assert!(has_camp(previous_player, TrackPosition::new(3, 2)));
+        assert!(has_camp(previous_player, TrackPosition::new(4, 1)));
+
+        assert!(previous_player.climbers.is_empty());
+    }
+
+    #[test]
+    fn cannot_set_camps_when_less_than_three_climbers_have_been_placed() {
+        let mut game = GameState::new(2).unwrap();
+
+        assert_eq!(move_continue(&mut game, [1, 1, 1, 2]), GoAgain);
+
+        game.roll_dice([1, 1, 1, 2]).unwrap();
+        let error = game.move_climbers([0, 1], [2, 3], SetCamps).unwrap_err();
+
+        assert_eq!(error, GameError::CannotSetCamp)
     }
 }

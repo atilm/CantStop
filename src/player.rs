@@ -1,11 +1,11 @@
-use crate::game_rules;
-use thiserror::Error;
+use crate::game_rules::get_max_number_of_steps;
+use crate::game_state::GameError;
 
 const BASE_CAMPS_PER_PLAYER: usize = 10;
 const CLIMBERS_PER_PLAYER: usize = 3;
 const NONE_POS: Option<TrackPosition> = None;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct TrackPosition {
     pub track: u32,
     pub step: u32,
@@ -18,6 +18,12 @@ impl TrackPosition {
 
     pub fn is_on_track(&self, track: u32) -> bool {
         self.track == track
+    }
+
+    pub fn is_at_top(&self) -> Result<bool, GameError> {
+        let track_index = self.track as usize;
+        let step = self.step as usize;
+        Ok(step >= get_max_number_of_steps(track_index)?)
     }
 }
 
