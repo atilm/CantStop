@@ -43,22 +43,21 @@ while !game.has_winner {
   * [x] When a pair points to a track where a climber is already climbing,
         then the climber advances 1 step (this can happen twice per turn)
   * [x] When the player has arrived at the top of a track, then further moves are ignored
-  * [ ] Another player can move
   * [ ] When the pair points to a closed track then it is ignored
-  * [ ] When a pair points to a free track, where no climber is yet,
+  * [x] When a pair points to a free track, where no climber is yet,
         a climber enters the track after the last base camp of the same player
 * SETTING CAMPS
   * [x] A player can set base camps when the third climber has been placed
   * [x] When a player sets base camps, it's the next player's turn
     * [x] and the the player's climbers are removed
-  * [.] A player can only set camps when all three climbers have been placed
+  * [x] A player can only set camps when all three climbers have been placed
   * [ ] Base camps can be built in the same field
   * [ ] When a player has a camp at the top of the track, the track is closed
     * [ ] All other base camps are removed
     * [ ] When the 10th base camp of a player is removed, she can reuse it
 * TAKING TURNS
   * [x] When a player cannot move any climber, it's the next player's turn
-  * [ ] When the last player has played, its the first player's turn again
+  * [x] When the last player has played, its the first player's turn again
   * [ ] A turn goes as follows:
     * [ ] The player rolls 4 dice
     * [ ] The player pairs up the dice

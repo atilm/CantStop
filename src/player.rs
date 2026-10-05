@@ -40,4 +40,14 @@ impl Player {
             climbers: Vec::with_capacity(CLIMBERS_PER_PLAYER),
         }
     }
+
+    pub fn get_base_camp_on_track(&self, track: u32) -> Option<&TrackPosition> {
+        self.base_camps.iter().find(|&c| c.is_on_track(track))
+    }
+
+    pub fn get_climber_on_track_mut(&mut self, track: u32) -> Option<&mut TrackPosition> {
+        self.climbers
+            .iter_mut()
+            .find(|ref mut c| c.is_on_track(track))
+    }
 }
